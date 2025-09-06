@@ -13,11 +13,17 @@ on:
         type: boolean
         description: Don't update VSCode
   schedule:
-    - cron: '0 18 * * *'
+    # Runs every day at 00:00 UTC
+    - cron: '0 0 * * *'
 
 jobs:
   build:
-    runs-on: macos-14
+    # Easily extend to other macOS versions or architectures if needed
+    strategy:
+      matrix:
+        os: [macos-14]
+        arch: [arm64]
+    runs-on: ${{ matrix.os }}
     env:
       APP_NAME: VSCodium
       ASSETS_REPOSITORY: ${{ github.repository }}
@@ -26,7 +32,7 @@ jobs:
       ORG_NAME: ${{ github.repository_owner }}
       OS_NAME: osx
       VERSIONS_REPOSITORY: ${{ github.repository_owner }}/versions
-      VSCODE_ARCH: arm64
+      VSCODE_ARCH: ${{ matrix.arch }}
       VSCODE_LATEST: ${{ github.event.inputs.dont_update == 'true' && 'no' || 'yes' }}
       VSCODE_QUALITY: stable
 
@@ -52,7 +58,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./build.sh
-        if: env.SHOULD_BUILD == 'yes'
+        if: ${{ env.SHOULD_BUILD == 'yes' }}
 
       - name: Import GPG key
         uses: crazy-max/ghaction-import-gpg@v6
@@ -61,25 +67,25 @@ jobs:
           passphrase: ${{ secrets.GPG_PASSPHRASE }}
           git_user_signingkey: true
           git_commit_gpgsign: true
-        if: env.SHOULD_BUILD == 'yes' && github.event.inputs.dont_update != 'true'
+        if: ${{ env.SHOULD_BUILD == 'yes' && github.event.inputs.dont_update != 'true' }}
 
       - name: Update upstream version
         run: ./update_upstream.sh
-        if: env.SHOULD_BUILD == 'yes' && github.event.inputs.dont_update != 'true'
+        if: ${{ env.SHOULD_BUILD == 'yes' && github.event.inputs.dont_update != 'true' }}
 
       - name: Prepare source
         run: ./prepare_src.sh
-        if: env.SHOULD_BUILD == 'yes'
+        if: ${{ env.SHOULD_BUILD == 'yes' }}
 
       - name: Release source
         env:
           GITHUB_TOKEN: ${{ secrets.STRONGER_GITHUB_TOKEN }}
           GITHUB_USERNAME: ${{ github.repository_owner }}
         run: ./release.sh
-        if: env.SHOULD_BUILD == 'yes'
+        if: ${{ env.SHOULD_BUILD == 'yes' }}
 
       - name: Dispatch builds
         uses: peter-evans/repository-dispatch@v3
         with:
           event-type: stable
-        if: env.SHOULD_BUILD == 'yes' || github.event.inputs.force_dispatch == 'true'
+        if: ${{ env.SHOULD_BUILD == 'yes' || github.event.inputs.force_dispatch == 'true' }}
