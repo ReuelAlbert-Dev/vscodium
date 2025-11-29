@@ -1,3 +1,5 @@
+# Problem in this file has been resolved
+
 name: .NET Core Desktop CI
 
 permissions:
@@ -52,20 +54,26 @@ jobs:
     - name: Decode PFX certificate from secret
       if: ${{ secrets.Base64_Encoded_Pfx != '' }}
       run: |
-        $pfxBytes = [System.Convert]::FromBase64String("${{ secrets.Base64_Encoded_Pfx }}")
-        $outPath = Join-Path -Path $env:WAP_PROJECT_DIR -ChildPath "GitHubActionsWorkflow.pfx"
-        [IO.File]::WriteAllBytes($outPath, $pfxBytes)
+        $pfx_cert_byte = [System.Convert]::FromBase64String("${{ secrets.Base64_Encoded_Pfx }}")
+        $certificatePath = Join-Path -Path $env:WAP_PROJECT_DIR -ChildPath GitHubActionsWorkflow.pfx
+        [IO.File]::WriteAllBytes("$certificatePath", $pfx_cert_byte)
 
-    - name: Package application
-      run: msbuild $env:WAP_PROJECT_PATH /p:Configuration=${{ matrix.configuration }} /p:UapAppxPackageBuildMode=StoreUpload /p:AppxBundle=Always /p:AppxBundlePlatforms="x86|x64" /p:PackageCertificateKeyFile="GitHubActionsWorkflow.pfx" /p:PackageCertificatePassword="${{ secrets.Pfx_Key }}"
+    # Create the app package by building and packaging the Windows Application Packaging project
+    - name: Create the app package
+      run: msbuild $env:WAP_PROJECT_PATH /p:Configuration=$env:Configuration /p:UapAppxPackageBuildMode=$env:Appx_Package_Build_Mode /p:AppxBundle=$env:Appx_Bundle /p:PackageCertificateKeyFile=GitHubActionsWorkflow.pfx /p:PackageCertificatePassword=${{ secrets.Pfx_Key }}
+      env:
+        Appx_Bundle: Always
+        Appx_Bundle_Platforms: x86|x64
+        Appx_Package_Build_Mode: StoreUpload
+        Configuration: ${{ matrix.configuration }}
 
-    - name: Clean up certificate
-      run: |
-        Remove-Item "$env:WAP_PROJECT_DIR\GitHubActionsWorkflow.pfx" -Force
-      if: ${{ secrets.Base64_Encoded_Pfx != '' }}
+    # Remove the pfx
+    - name: Remove the pfx
+      run: Remove-Item -path $env:WAP_PROJECT_DIR\GitHubActionsWorkflow.pfx
 
-    - name: Upload MSIX Artifact
-      uses: actions/upload-artifact@v4
+    # Upload the MSIX package: https://github.com/marketplace/actions/upload-a-build-artifact
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v5
       with:
-        name: MSIX Package (${% raw %}{{ matrix.configuration }}{% endraw %})
+        name: MSIX Package (${{ matrix.configuration }})
         path: ${{ env.WAP_PROJECT_DIR }}\AppPackages
